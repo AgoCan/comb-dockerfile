@@ -440,35 +440,109 @@ ENV BUILD_TASK_ID="12345"
 
 ---
 
-## 六、前端页面设计
+## 六、多模式场景设计
 
-### 6.1 页面结构
+### 6.1 场景分类
+
+系统支持多种镜像构建场景，每种场景有独立的层级配置和推荐组合：
+
+| 模式 | 说明 | 典型层级 |
+|------|------|----------|
+| 🎯 训练镜像 | 深度学习/机器学习训练环境 | cuda → python → framework → tools |
+| 🚀 推理镜像 | 模型部署和推理服务 | cuda/cpu → python → inference-engine → web-framework |
+| 📊 数据处理 | ETL、数据清洗、特征工程 | python → data-tools → compute-engine → storage |
+| 💻 开发环境 | 云 IDE、在线开发环境 | base-os → runtime → editor → dev-tools |
+| 🔧 CI/CD | 构建流水线 Runner | base-os → language → build-tools → deploy-tools |
+| 🌐 微服务 | 后端服务镜像 | base-os → language → framework → middleware |
+| 🧪 测试镜像 | 自动化测试环境 | base-os → language → test-framework → browser |
+| 🔒 安全扫描 | 代码/镜像安全检查 | base-os → scan-tools → report-tools |
+| 📦 大数据 | 数据湖、流批处理 | base-os → runtime → bigdata-engine → connectors |
+
+### 6.2 数据结构调整
+
+#### level 表增加场景分类
+
+```sql
+ALTER TABLE level ADD COLUMN category VARCHAR(32) NOT NULL DEFAULT 'training' 
+COMMENT '场景分类: training/inference/data/dev/cicd/service/testing/security/bigdata';
+
+ALTER TABLE level ADD INDEX idx_category (category);
+```
+
+#### 场景配置表
+
+```sql
+CREATE TABLE scenario_config (
+    id                  BIGINT PRIMARY KEY AUTO_INCREMENT,
+    category            VARCHAR(32) NOT NULL UNIQUE COMMENT '场景标识',
+    display_name        VARCHAR(64) NOT NULL COMMENT '显示名称',
+    description         TEXT COMMENT '场景描述',
+    icon                VARCHAR(64) COMMENT '图标标识',
+    sort_order          INT DEFAULT 0 COMMENT '排序',
+    default_levels      JSON COMMENT '默认选中的层级ID列表',
+    required_categories JSON COMMENT '必选层级分类',
+    created_at          DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at          DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    UNIQUE KEY uk_category (category)
+);
+```
+
+**示例数据：**
+```sql
+INSERT INTO scenario_config (category, display_name, icon, sort_order, default_levels, required_categories) VALUES
+('training', '训练镜像', '🎯', 1, '["cuda", "python", "framework"]', '["cuda", "python"]'),
+('inference', '推理镜像', '🚀', 2, '["cuda", "python", "inference", "web"]', '["python"]'),
+('data', '数据处理', '📊', 3, '["python", "data-tools"]', '["python"]'),
+('dev', '开发环境', '💻', 4, '["base", "runtime", "editor"]', '["base", "runtime"]'),
+('cicd', 'CI/CD', '🔧', 5, '["base", "language", "build"]', '["base"]');
+```
+
+---
+
+## 七、前端页面设计
+
+### 7.1 页面结构
 
 ```
-1. 首页/仪表盘
-   - 快速创建入口
-   - 最近构建记录
-   - 热门组合模板
+1. 首页（场景选择）
+   ┌─────────────────────────────────────────────────────────┐
+   │  选择镜像类型                                             │
+   ├─────────────────────────────────────────────────────────┤
+   │  ┌─────────┐  ┌─────────┐  ┌─────────┐  ┌─────────┐     │
+   │  │ 🎯      │  │ 🚀      │  │ 📊      │  │ 💻      │     │
+   │  │ 训练镜像 │  │ 推理镜像 │  │ 数据处理 │  │ 开发环境 │     │
+   │  │ [开始]  │  │ [开始]  │  │ [开始]  │  │ [开始]  │     │
+   │  └─────────┘  └─────────┘  └─────────┘  └─────────┘     │
+   │  ┌─────────┐  ┌─────────┐  ┌─────────┐  ┌─────────┐     │
+   │  │ 🔧      │  │ 🌐      │  │ 🧪      │  │ 🔒      │     │
+   │  │ CI/CD   │  │ 微服务  │  │ 测试镜像 │  │ 安全扫描 │     │
+   │  │ [开始]  │  │ [开始]  │  │ [开始]  │  │ [开始]  │     │
+   │  └─────────┘  └─────────┘  └─────────┘  └─────────┘     │
+   ├─────────────────────────────────────────────────────────┤
+   │  最近构建记录 | 热门组合模板                               │
+   └─────────────────────────────────────────────────────────┘
 
-2. 组合创建页
-   - 层级选择器（可视化树形）
+2. 组合创建页（根据选择的场景动态展示层级）
+   - 场景标题：🎯 训练镜像
+   - 层级选择器（仅展示该场景相关层级）
    - 每层模板选择/自定义
    - 兼容性实时校验
    - Dockerfile 预览
    - 构建选项
 
 3. 构建监控页
-   - 任务列表
+   - 任务列表（按场景分类筛选）
    - 实时日志
    - 进度展示
 
 4. 镜像管理页
-   - 镜像列表
+   - 镜像列表（按场景分类）
    - 搜索过滤
    - Dockerfile 查看
    - 推送状态
 
 5. 模板中心
+   - 按场景分类展示
    - 我的模板
    - 公开模板
    - 收藏/使用
@@ -479,21 +553,145 @@ ENV BUILD_TASK_ID="12345"
    - 保存为新模板
 ```
 
-### 6.2 核心交互
+### 7.2 用户流程
 
 ```
-选择层级流程：
-    cuda [展开]
-        ├── 10.0 [选择] ── 自动收缩，展开下一层
-        ├── 10.1 [选择]
-        └── 10.2 [选择]
-    
-    python [自动展开]
-        ├── py36 [选择]
-        ├── py37 [选择] ── 不兼容提示 ❌
-        └── py38 [选择]
-    
-    ...后续层级
+首页
+  │
+  ├─ 选择场景 ─────────────────────┐
+  │   (训练镜像)                    │
+  ↓                                │
+场景专属组合页                      │
+  │                                │
+  ├─ 加载该场景的层级配置            │
+  ├─ 必选层高亮提示                  │
+  ├─ 按场景顺序引导选择              │
+  │                                │
+  ├────────────────────────────────┤
+  │                                │
+  ↓                                │
+组合详情页                          │
+  │                                │
+  ├─ 预览 Dockerfile               │
+  ├─ 选择构建模式                   │
+  └─ 提交构建                       │
+                                   │
+其他场景同理 ←─────────────────────┘
+```
+
+### 7.3 场景专属层级选择
+
+**训练镜像场景：**
+```
+第1步：选择 GPU 环境
+    ┌─────────────────────────────────────┐
+    │ 🎯 训练镜像                          │
+    ├─────────────────────────────────────┤
+    │ 1. CUDA 环境（必选）                 │
+    │    ○ cuda 10.0                      │
+    │    ○ cuda 10.2                      │
+    │    ○ cuda 11.0                      │
+    │    ○ cuda 11.7                      │
+    │    ○ cpu-only（无GPU）              │
+    └─────────────────────────────────────┘
+
+第2步：选择 Python 版本
+    ┌─────────────────────────────────────┐
+    │ 2. Python 环境（必选）               │
+    │    ○ Python 3.6                     │
+    │    ○ Python 3.7                     │
+    │    ○ Python 3.8                     │
+    │    ○ Python 3.9                     │
+    │    ○ Python 3.10                    │
+    └─────────────────────────────────────┘
+
+第3步：选择深度学习框架
+    ┌─────────────────────────────────────┐
+    │ 3. 深度学习框架                      │
+    │    ○ TensorFlow 2.x                 │
+    │    ○ PyTorch 1.x                    │
+    │    ○ PaddlePaddle                   │
+    │    ○ 无框架（自定义）                │
+    └─────────────────────────────────────┘
+
+... 继续后续层级
+```
+
+**推理镜像场景：**
+```
+第1步：选择运行环境
+    ┌─────────────────────────────────────┐
+    │ 🚀 推理镜像                          │
+    ├─────────────────────────────────────┤
+    │ 1. 运行环境（必选）                  │
+    │    ○ GPU（CUDA）                    │
+    │    ○ CPU Only                       │
+    └─────────────────────────────────────┘
+
+第2步：选择 Python 版本
+    ...
+
+第3步：选择推理引擎
+    ┌─────────────────────────────────────┐
+    │ 3. 推理引擎                          │
+    │    ○ ONNX Runtime                   │
+    │    ○ TensorRT                       │
+    │    ○ OpenVINO                       │
+    │    ○ TorchServe                     │
+    │    ○ TFServing                      │
+    └─────────────────────────────────────┘
+
+第4步：选择服务框架
+    ┌─────────────────────────────────────┐
+    │ 4. 服务框架                          │
+    │    ○ FastAPI                        │
+    │    ○ Flask                          │
+    │    ○ gRPC                           │
+    │    ○ Triton                         │
+    └─────────────────────────────────────┘
+```
+
+**开发环境场景：**
+```
+第1步：选择基础系统
+    ┌─────────────────────────────────────┐
+    │ 💻 开发环境                          │
+    ├─────────────────────────────────────┤
+    │ 1. 基础系统（必选）                  │
+    │    ○ Ubuntu 22.04                   │
+    │    ○ Ubuntu 20.04                   │
+    │    ○ Debian 11                      │
+    │    ○ Alpine 3.18                    │
+    └─────────────────────────────────────┘
+
+第2步：选择运行时
+    ┌─────────────────────────────────────┐
+    │ 2. 运行时环境（必选）                │
+    │    ○ Python 3.11                    │
+    │    ○ Node.js 18                     │
+    │    ○ Go 1.21                        │
+    │    ○ Java 17                        │
+    │    ○ 多语言（自定义）                │
+    └─────────────────────────────────────┘
+
+第3步：选择编辑器
+    ┌─────────────────────────────────────┐
+    │ 3. 开发工具                          │
+    │    ○ VS Code Server                 │
+    │    ○ JupyterLab                     │
+    │    ○ Vim + Plugins                  │
+    │    ○ 无编辑器                        │
+    └─────────────────────────────────────┘
+```
+
+### 7.4 API 调整
+
+```
+GET    /api/scenarios                    # 获取所有场景列表
+GET    /api/scenarios/{category}/levels  # 获取某场景的层级配置
+POST   /api/combinations                 # 创建构建任务（增加 category 参数）
+GET    /api/combinations?category=training # 按场景筛选任务
+GET    /api/images?category=inference    # 按场景筛选镜像
 ```
 
 ---
