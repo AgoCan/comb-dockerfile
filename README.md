@@ -4,6 +4,7 @@
 
 ```bash
 go install github.com/swaggo/swag/cmd/swag@latest
+go get -u github.com/swaggo/swag@latest
 swag init -g cmd/app/main.go
 go run cmd/app/main.go
 ```
